@@ -36,3 +36,8 @@ Thumbs.db
 
 # Python test cache
 .pytest_cache/
+
+
+# Local scripts and model files
+check_gpu.py
+trig_model.keras
