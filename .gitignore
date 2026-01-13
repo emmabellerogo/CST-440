@@ -14,7 +14,7 @@ env/
 
 # TensorFlow / Keras / model files
 *.h5
-*.tflite
+
 *.pb
 *.ckpt
 
