@@ -28,17 +28,24 @@ def predict_trig(angle, model=None):
         if model is None:
             return None
     
-    # Prepare input
-    x = np.array([[angle]], dtype=np.float32)
+    # Prepare input with same normalization as training
+    # Use modulo to handle angles outside [0, 2π]
+    normalized_angle = np.mod(angle, 2 * np.pi) / (2 * np.pi)
+    x = np.array([[normalized_angle]], dtype=np.float32)
     
     # Make prediction
     predictions = model.predict(x, verbose=0)[0]
     
+    # Compute tan from sin/cos to avoid division by zero
+    sin_pred = float(predictions[0])
+    cos_pred = float(predictions[1])
+    tan_pred = sin_pred / cos_pred if abs(cos_pred) > 1e-6 else float('inf')
+    
     return {
         'angle': angle,
-        'sin': float(predictions[0]),
-        'cos': float(predictions[1]),
-        'tan': float(predictions[2]),
+        'sin': sin_pred,
+        'cos': cos_pred,
+        'tan': tan_pred,
         'actual_sin': float(np.sin(angle)),
         'actual_cos': float(np.cos(angle)),
         'actual_tan': float(np.tan(angle))
