@@ -1,0 +1,9 @@
+Metric,Sin(x),Cos(x)
+Mean Absolute Error,0.02847705,0.04486180
+Root Mean Squared Error,0.04079829,0.07425345
+Max Absolute Error,0.13267737,0.25280916
+Standard Deviation of Error,0.03769204,0.07352489
+Mean Error (Bias),0.01561442,-0.01037621
+Median Absolute Error,0.01908258,0.01968169
+95th Percentile Error,0.10223845,0.21098173
+99th Percentile Error,0.13115419,0.25092984
