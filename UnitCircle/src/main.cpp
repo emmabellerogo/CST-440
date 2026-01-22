@@ -16,16 +16,19 @@ tflite::MicroInterpreter* interpreter;
 TfLiteTensor* input; 
 TfLiteTensor* output; 
 
+// Data collection
+const unsigned long COLLECTION_TIME = 10000; // 10 seconds in milliseconds
+unsigned long start_time = 0;
+bool collecting = true;
+bool header_printed = false;
+
 void setup() { 
   Serial.begin(115200); 
   while (!Serial); 
   
-  Serial.println("=== TensorFlow Lite Micro Trig Model ==="); 
-  
   // Load model 
   const tflite::Model* model = tflite::GetModel(trig_model_tflite); 
   if (model->version() != TFLITE_SCHEMA_VERSION) { 
-    Serial.println("ERROR: Model schema mismatch"); 
     while (1); 
   } 
   
@@ -41,41 +44,53 @@ void setup() {
   interpreter = &static_interpreter; 
   
   if (interpreter->AllocateTensors() != kTfLiteOk) { 
-    Serial.println("ERROR: Tensor allocation failed"); 
     while (1); 
   } 
   
   input = interpreter->input(0); 
   output = interpreter->output(0); 
   
-  Serial.println("Model loaded successfully!"); 
+  // Print CSV header
+  Serial.println("x,sin,cos,tan");
+  header_printed = true;
+  
+  start_time = millis();
 } 
 
 void loop() { 
-  static float x = 0.0f; 
-  // Input: x in radians 
-  input->data.f[0] = x; 
-  
-  if (interpreter->Invoke() != kTfLiteOk) { 
-    Serial.println("ERROR: Inference failed"); 
-    delay(1000); 
-    return; } 
-  
-  float sin_x = output->data.f[0]; 
-  float cos_x = output->data.f[1]; 
-  float tan_x = sin_x / (cos_x + 1e-6f); 
-  
-  Serial.print("x="); 
-  Serial.print(x, 3); 
-  Serial.print(" | sin="); 
-  Serial.print(sin_x, 5); 
-  Serial.print(" | cos="); 
-  Serial.print(cos_x, 5); 
-  Serial.print(" | tan="); 
-  Serial.println(tan_x, 5); 
-  
-  x += 0.1f; 
-  if (x > 6.283f) x = 0.0f; 
-  
-  delay(500); 
+  if (collecting) {
+    // Check if 10 seconds have passed
+    if (millis() - start_time >= COLLECTION_TIME) {
+      collecting = false;
+      while(1); // Stop execution
+    }
+    
+    static float x = 0.0f;
+    
+    // Input: x in radians 
+    input->data.f[0] = x; 
+    
+    if (interpreter->Invoke() != kTfLiteOk) { 
+      delay(1000); 
+      return; 
+    } 
+    
+    float sin_x = output->data.f[0]; 
+    float cos_x = output->data.f[1]; 
+    float tan_x = sin_x / (cos_x + 1e-6f); 
+    
+    // Output CSV row
+    Serial.print(x, 6);
+    Serial.print(",");
+    Serial.print(sin_x, 6);
+    Serial.print(",");
+    Serial.print(cos_x, 6);
+    Serial.print(",");
+    Serial.println(tan_x, 6);
+    
+    x += 0.1f; 
+    if (x > 6.283f) x = 0.0f; 
+    
+    delay(500); 
+  }
 }
