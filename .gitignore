@@ -41,3 +41,12 @@ Thumbs.db
 # Local scripts and model files
 check_gpu.py
 trig_model.keras
+
+# Large training data and environments (teammates can download/recreate)
+Project2/training/data/
+Project2/training/myenv/
+myenv/
+**/data/speech_commands/
+
+# PlatformIO build artifacts
+.pio/
