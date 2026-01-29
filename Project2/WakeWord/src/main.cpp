@@ -313,7 +313,9 @@ void setup() {
     // Initialize PDM microphone
     Serial.println("Initializing microphone...");
     PDM.onReceive(onPDMdata);
-    PDM.setBufferSize(PDM_BUFFER_SIZE * 2);
+    PDM.setBufferSize(4096);
+    // PDM.setBufferSize(PDM_BUFFER_SIZE * 2);
+    PDM.setGain(30);  // Adjust based on your environment (0-80)
 
     if (!PDM.begin(1, SAMPLE_RATE)) {
         Serial.println("ERROR: Failed to start PDM microphone!");
