@@ -1,8 +1,9 @@
 /*
  * Keyword Detection for Arduino Nano 33 BLE Sense
- * Memory-optimized version
+ * Memory-optimized version with Wake Word
  *
- * Detects spoken keywords: go, stop, yes, no, up, down
+ * Wake word: "bird"
+ * After "bird" is detected, recognizes: stop, left, right, three, cat
  * Uses MFCC features + CNN model via TensorFlow Lite Micro
  */
 
@@ -15,6 +16,24 @@
 
 #include "model_config.h"
 #include "keyword_model_data.h"
+
+// ============================================================
+// WAKE WORD STATE
+// ============================================================
+
+static bool wakeWordActive = false;
+static unsigned long wakeWordTime = 0;
+static const unsigned long WAKE_WORD_TIMEOUT = 5000; // 5 seconds timeout after "bird"
+
+// ============================================================
+// ACCURACY TESTING MODE
+// ============================================================
+
+static bool accuracyMode = false;
+static int totalPredictions = 0;
+static int correctPredictions = 0;
+static String expectedLabel = "";
+static bool waitingForPrediction = false;
 
 // ============================================================
 // AUDIO CAPTURE
@@ -314,6 +333,96 @@ int runInference(float* mfccFeatures) {
 }
 
 // ============================================================
+// SERIAL COMMAND PROCESSING
+// ============================================================
+
+void processSerialCommand() {
+    if (Serial.available() > 0) {
+        String command = Serial.readStringUntil('\n');
+        command.trim();
+        command.toLowerCase();
+
+        if (command == "accuracy") {
+            accuracyMode = !accuracyMode;
+            if (accuracyMode) {
+                Serial.println("\n========================================");
+                Serial.println("ACCURACY TESTING MODE ENABLED");
+                Serial.println("========================================");
+                Serial.println("Commands:");
+                Serial.println("  Type word name before speaking it");
+                Serial.println("  Valid words: stop, left, right, three, cat, bird, silence, unknown");
+                Serial.println("  Type 'stats' to see current accuracy");
+                Serial.println("  Type 'reset' to reset counters");
+                Serial.println("  Type 'accuracy' to exit this mode");
+                Serial.println("========================================\n");
+                totalPredictions = 0;
+                correctPredictions = 0;
+            } else {
+                Serial.println("\n========================================");
+                Serial.println("ACCURACY TESTING MODE DISABLED");
+                Serial.println("Returning to normal wake word mode");
+                Serial.println("========================================\n");
+            }
+        } else if (command == "stats" && accuracyMode) {
+            Serial.println("\n--- Accuracy Statistics ---");
+            Serial.print("Total predictions: ");
+            Serial.println(totalPredictions);
+            Serial.print("Correct predictions: ");
+            Serial.println(correctPredictions);
+            if (totalPredictions > 0) {
+                float accuracy = (float)correctPredictions / totalPredictions * 100.0f;
+                Serial.print("Accuracy: ");
+                Serial.print(accuracy, 2);
+                Serial.println("%");
+            } else {
+                Serial.println("Accuracy: N/A (no predictions yet)");
+            }
+            Serial.println("---------------------------\n");
+        } else if (command == "reset" && accuracyMode) {
+            totalPredictions = 0;
+            correctPredictions = 0;
+            Serial.println("[Accuracy counters reset]\n");
+        } else if (accuracyMode) {
+            // Check if it's a valid class name
+            bool validClass = false;
+            String normalizedCommand = command;
+            
+            // Map common variations
+            if (command == "silence" || command == "_silence_") {
+                normalizedCommand = "_silence_";
+                validClass = true;
+            } else if (command == "unknown" || command == "_unknown_") {
+                normalizedCommand = "_unknown_";
+                validClass = true;
+            } else {
+                // Check against class names
+                for (int i = 0; i < NUM_CLASSES; i++) {
+                    String className = String(CLASS_NAMES[i]);
+                    className.toLowerCase();
+                    if (className == command) {
+                        normalizedCommand = String(CLASS_NAMES[i]);
+                        validClass = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (validClass) {
+                expectedLabel = normalizedCommand;
+                waitingForPrediction = true;
+                Serial.print("Expected: ");
+                Serial.print(expectedLabel);
+                Serial.println(" - Now speak the word...");
+            } else {
+                Serial.print("Unknown class: ");
+                Serial.println(command);
+                Serial.println("Valid: stop, left, right, three, cat, bird, silence, unknown");
+            }
+        }
+    }
+}
+
+// ============================================================
 // MAIN
 // ============================================================
 
@@ -325,8 +434,10 @@ void setup() {
 
     Serial.println("\n========================================");
     Serial.println("Keyword Detection - Arduino Nano 33 BLE");
+    Serial.println("With Wake Word Activation");
     Serial.println("========================================");
-    Serial.println("Keywords: go, stop, yes, no, up, down");
+    Serial.println("Wake word: BIRD");
+    Serial.println("Keywords: stop, left, right, three, cat");
     Serial.println();
 
     // Initialize DSP
@@ -347,10 +458,13 @@ void setup() {
         while (1) delay(1000);
     }
 
+
     Serial.println("Microphone initialized.");
     Serial.println("\n========================================");
-    Serial.println("Ready! Speak a keyword...");
-    Serial.println("========================================\n");
+    Serial.println("Ready! Say 'BIRD' to activate...");
+    Serial.println("========================================");
+    Serial.println("Tip: Type 'accuracy' in Serial Monitor to test model accuracy");
+    Serial.println();
 }
 
 // Reuse buffer to save memory
@@ -358,6 +472,16 @@ static float audioFloat[AUDIO_LENGTH_SAMPLES];
 static float mfccFeatures[NUM_FRAMES * NUM_MFCC];
 
 void loop() {
+    // Process serial commands
+    processSerialCommand();
+
+    // Check if wake word has timed out (only in normal mode)
+    if (!accuracyMode && wakeWordActive && (millis() - wakeWordTime > WAKE_WORD_TIMEOUT)) {
+        wakeWordActive = false;
+        Serial.println("[Wake word timeout - say 'BIRD' again to reactivate]");
+        Serial.println();
+    }
+
     if (audioReady) {
         unsigned long startTime = millis();
 
@@ -374,7 +498,7 @@ void loop() {
         }
 
         if (maxLevel < 0.02f) {
-            Serial.println("[silence - too quiet]");
+            // Too quiet - skip processing
         } else {
             // Extract MFCC features
             extractMFCC(audioFloat, mfccFeatures);
@@ -384,12 +508,78 @@ void loop() {
 
             unsigned long endTime = millis();
 
-            Serial.print(">>> DETECTED: ");
-            Serial.print(CLASS_NAMES[predicted]);
-            Serial.print(" (");
-            Serial.print(endTime - startTime);
-            Serial.println(" ms)");
-            Serial.println();
+            const char* detectedWord = CLASS_NAMES[predicted];
+
+            // ===== ACCURACY TESTING MODE =====
+            if (accuracyMode && waitingForPrediction) {
+                totalPredictions++;
+                bool isCorrect = (String(detectedWord) == expectedLabel);
+                if (isCorrect) {
+                    correctPredictions++;
+                }
+
+                Serial.print("Predicted: ");
+                Serial.print(detectedWord);
+                Serial.print(" | Expected: ");
+                Serial.print(expectedLabel);
+                Serial.print(" | ");
+                Serial.print(isCorrect ? "✓ CORRECT" : "✗ WRONG");
+                Serial.print(" (");
+                Serial.print(endTime - startTime);
+                Serial.println(" ms)");
+
+                float accuracy = (float)correctPredictions / totalPredictions * 100.0f;
+                Serial.print("Running accuracy: ");
+                Serial.print(correctPredictions);
+                Serial.print("/");
+                Serial.print(totalPredictions);
+                Serial.print(" = ");
+                Serial.print(accuracy, 2);
+                Serial.println("%\n");
+
+                waitingForPrediction = false;
+                expectedLabel = "";
+            }
+            // ===== NORMAL WAKE WORD MODE =====
+            else if (!accuracyMode) {
+                // Check if "bird" was detected (index 5 based on CLASS_NAMES array)
+                if (strcmp(detectedWord, "bird") == 0) {
+                    // Toggle wake word state
+                    wakeWordActive = !wakeWordActive;
+                    wakeWordTime = millis();
+                    
+                    Serial.print(">>> WAKE WORD DETECTED: BIRD");
+                    Serial.print(" (");
+                    Serial.print(endTime - startTime);
+                    Serial.println(" ms)");
+                    
+                    if (wakeWordActive) {
+                        Serial.println("    [Listening ACTIVATED - commands enabled]");
+                    } else {
+                        Serial.println("    [Listening DEACTIVATED - say 'BIRD' to reactivate]");
+                    }
+                    Serial.println();
+                }
+                // Check if we detected a command word while wake word is active
+                else if (wakeWordActive) {
+                    // Ignore silence and unknown
+                    if (strcmp(detectedWord, "_silence_") != 0 && strcmp(detectedWord, "_unknown_") != 0) {
+                        Serial.print(">>> COMMAND DETECTED: ");
+                        Serial.print(detectedWord);
+                        Serial.print(" (");
+                        Serial.print(endTime - startTime);
+                        Serial.println(" ms)");
+                        Serial.println();
+                        
+                        // Keep wake word active for additional commands
+                        wakeWordTime = millis(); // Reset timeout
+                    }
+                }
+                // Wake word not active - silently ignore everything except "bird"
+                else {
+                    // Do nothing - stay silent until "bird" is said
+                }
+            }
         }
 
         // Reset for next capture
