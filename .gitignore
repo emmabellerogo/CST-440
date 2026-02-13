@@ -20,6 +20,7 @@ env/
 
 # CSV / data files (optional: include if large or generated)
 data.csv
+/Project3/training/dataset/
 
 # OS-specific files
 .DS_Store
