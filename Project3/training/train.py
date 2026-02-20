@@ -169,8 +169,22 @@ tflite_model = converter.convert()
 with open("face_model.tflite","wb") as f:
     f.write(tflite_model)
 
-
 print("[DONE] face_model.tflite created")
+
+
+# ------------------------------
+# Also save Float32 TFLite (for Python/PC testing)
+# ------------------------------
+
+print("[INFO] Converting float32 model for PC testing...")
+
+float_converter = tf.lite.TFLiteConverter.from_keras_model(model)
+float_tflite = float_converter.convert()
+
+with open("face_model_float32.tflite", "wb") as f:
+    f.write(float_tflite)
+
+print("[DONE] face_model_float32.tflite created")
 
 
 # ------------------------------
