@@ -1,4 +1,6 @@
 // Configuration for 96x96 face detection (TFLite Micro)
+// Board:  Arduino Nano 33 BLE Sense (nRF52840, 256 KB SRAM)
+// Camera: ArduCAM Mini 2MP Plus (OV2640) — SPI/I2C interface
 // Must match training: train.py uses 96x96 grayscale, normalized [0,1], then quantized to uint8
 
 #ifndef MODEL_CONFIG_H
