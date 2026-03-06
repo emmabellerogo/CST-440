@@ -2,7 +2,7 @@
  * Face Detection — Arduino Nano 33 BLE Sense + ArduCAM Mini 2MP Plus (OV2640)
  *
  * Camera wiring (OV2640 → Nano 33 BLE Sense):
- *   VCC   → 5V    (module has onboard AMS1117-3.3 LDO; 5V in → 3.3V to sensor)
+ *   VCC   → 3.3V    (module has onboard AMS1117-3.3 LDO; 5V in → 3.3V to sensor)
  *   GND   → GND
  *   SDA   → A4    (3.3V I2C — do NOT use 5V logic here)
  *   SCL   → A5    (3.3V I2C — do NOT use 5V logic here)
@@ -304,6 +304,10 @@ void loop() {
     Serial.print((outputTensor->data.uint8[0] - outputTensor->params.zero_point)
                   * outputTensor->params.scale, 3);
     Serial.print(F("  ("));
+    Serial.print(dt);
+    Serial.println(F(" ms)"));
+  } else if (result == 0) {
+    Serial.print(F("No face detected  ("));
     Serial.print(dt);
     Serial.println(F(" ms)"));
   }

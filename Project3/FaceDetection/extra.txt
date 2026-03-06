@@ -1,0 +1,38 @@
+15:35:29.603 > No face detected  (731 ms)
+15:35:32.602 > No face detected  (731 ms)
+15:35:35.601 > No face detected  (730 ms)
+15:35:38.600 > >>> FACE DETECTED  prob=0.582  (731 ms)
+15:35:41.600 > >>> FACE DETECTED  prob=0.582  (730 ms)
+15:35:44.599 > >>> FACE DETECTED  prob=0.582  (731 ms)
+15:35:47.599 > No face detected  (730 ms)
+15:35:50.598 > No face detected  (731 ms)
+15:35:53.597 > No face detected  (730 ms)
+15:35:56.596 > >>> FACE DETECTED  prob=0.500  (731 ms)
+15:35:59.596 > >>> FACE DETECTED  prob=0.500  (731 ms)
+15:36:02.595 > No face detected  (730 ms)
+15:36:05.593 > No face detected  (730 ms)
+15:36:08.596 > No face detected  (730 ms)
+
+========================================================
+ ACCURACY REPORT
+========================================================
+  Total labeled frames : 16
+    Face    (label=1)  : 15
+    No Face (label=0)  : 1
+  Correct predictions  : 14
+  Overall accuracy     : 87.50%
+
+              precision    recall  f1-score   support
+
+     no face       0.33      1.00      0.50         1
+        face       1.00      0.87      0.93        15
+
+    accuracy                           0.88        16
+   macro avg       0.67      0.93      0.71        16
+weighted avg       0.96      0.88      0.90        16
+
+Confusion matrix (rows=actual, cols=predicted):
+            pred:noface  pred:face
+  act:noface       1           0
+  act:face         2          13
+========================================================
