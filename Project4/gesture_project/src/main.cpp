@@ -15,7 +15,7 @@
  *   OV2640 QQVGA 160x120 RGB565
  *   -> stream FIFO row-by-row
  *   -> convert RGB565 -> grayscale (BT.601 integer luma)
- *   -> center-crop 96x96 written directly into TFLite INT8 input tensor
+ *   -> center-crop 64x64 written directly into TFLite INT8 input tensor
  *   No intermediate frame buffer — saves ~38 KB of SRAM.
  *
  * Gestures (CLASS_NAMES order from train_gesture_model.py):
@@ -27,8 +27,8 @@
  * State machine:
  *   WAITING -> COOLDOWN -> WAITING
  *
- * Model:  gesture_model_int8.tflite converted to gesture_model.h
- * Input:  int8 [1, 96, 96, 1] grayscale
+ * Model:  hagrid_tiny_64_gray_int8.tflite converted to gesture_model.h
+ * Input:  int8 [1, 64, 64, 1] grayscale
  * Output: int8 [1, 4] — dequantised to float probabilities
  *
  * Memory budget (256 KB SRAM):
@@ -73,12 +73,12 @@
 
 #define CAM_WIDTH    160
 #define CAM_HEIGHT   120
-#define IMG_W        96
-#define IMG_H        96
+#define IMG_W        64
+#define IMG_H        64
 
-// Center-crop offsets: 160x120 -> 96x96
-#define CROP_X       ((CAM_WIDTH  - IMG_W) / 2)   // 32 px from left
-#define CROP_Y       ((CAM_HEIGHT - IMG_H) / 2)   // 12 px from top
+// Center-crop offsets: 160x120 -> 64x64
+#define CROP_X       ((CAM_WIDTH  - IMG_W) / 2)   // 48 px from left
+#define CROP_Y       ((CAM_HEIGHT - IMG_H) / 2)   // 28 px from top
 
 // NUM_CLASSES, CONF_THRESH_PCT, COOLDOWN_MS are injected via build_flags.
 // Provide safe defaults in case they are not set.
@@ -178,7 +178,7 @@ static bool initTFLite() {
         inputTensor->dims->data[2] != IMG_W     ||
         inputTensor->dims->data[3] != 1) {
         Serial.println(F("ERROR: Input tensor shape mismatch!"));
-        Serial.print  (F("       Expected [1,96,96,1]  Got [1,"));
+        Serial.print  (F("       Expected [1,64,64,1]  Got [1,"));
         Serial.print  (inputTensor->dims->data[1]); Serial.print(F(","));
         Serial.print  (inputTensor->dims->data[2]); Serial.print(F(","));
         Serial.print  (inputTensor->dims->data[3]);
@@ -189,7 +189,7 @@ static bool initTFLite() {
     // Confirm INT8 input type (matches training INT8 quantisation)
     if (inputTensor->type != kTfLiteInt8) {
         Serial.println(F("ERROR: Expected INT8 input tensor."));
-        Serial.println(F("       Make sure you are using gesture_model_int8.tflite"));
+        Serial.println(F("       Make sure you are using hagrid_tiny_64_gray_int8.tflite"));
         return false;
     }
 
