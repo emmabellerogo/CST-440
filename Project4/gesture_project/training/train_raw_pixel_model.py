@@ -127,6 +127,18 @@ def stratified_group_split(
         class_val: list[int] = []
         class_train: list[int] = []
 
+        # If this class only has one capture session, fall back to a plain
+        # per-class shuffled split so validation is still populated.
+        if len(sess_ids) <= 1:
+            shuffled_idx = idx.copy()
+            rng.shuffle(shuffled_idx)
+            n_val = min(target_val, len(shuffled_idx) - 1)
+            class_val.extend(shuffled_idx[:n_val].tolist())
+            class_train.extend(shuffled_idx[n_val:].tolist())
+            train_idx.extend(class_train)
+            val_idx.extend(class_val)
+            continue
+
         # Keep sessions intact where possible to reduce burst leakage.
         for sid in sess_ids:
             sidx = sess_to_indices[sid]
@@ -155,6 +167,17 @@ def class_counts(y: np.ndarray) -> np.ndarray:
     return np.bincount(y, minlength=len(CLASS_NAMES))
 
 
+def session_counts_per_class(y: np.ndarray, sessions: np.ndarray) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for i, name in enumerate(CLASS_NAMES):
+        idx = np.nonzero(y == i)[0]
+        if len(idx) == 0:
+            out[name] = 0
+            continue
+        out[name] = len(set(str(sessions[j]) for j in idx.tolist()))
+    return out
+
+
 def class_weights(y: np.ndarray) -> dict[int, float]:
     counts = class_counts(y)
     total = float(np.sum(counts))
@@ -165,7 +188,7 @@ def class_weights(y: np.ndarray) -> dict[int, float]:
     return weights
 
 
-def build_model() -> tf.keras.Model:
+def build_model(learning_rate: float, label_smoothing: float) -> tf.keras.Model:
     inputs = tf.keras.Input(shape=(IMG_H, IMG_W, 1), name="input")
     x = tf.keras.layers.Rescaling(1.0 / 255.0)(inputs)
 
@@ -194,9 +217,20 @@ def build_model() -> tf.keras.Model:
     outputs = tf.keras.layers.Dense(len(CLASS_NAMES), activation="softmax", name="probs")(x)
 
     model = tf.keras.Model(inputs, outputs, name="gesture_raw_pixel_firmware")
+    try:
+        loss_obj = tf.keras.losses.SparseCategoricalCrossentropy(label_smoothing=label_smoothing)
+    except TypeError:
+        # Older TF/Keras builds do not support label_smoothing on sparse CE.
+        if label_smoothing > 0.0:
+            print(
+                "Warning: This TensorFlow build does not support --label-smoothing with "
+                "SparseCategoricalCrossentropy. Continuing with label_smoothing=0.0."
+            )
+        loss_obj = tf.keras.losses.SparseCategoricalCrossentropy()
+
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-        loss="sparse_categorical_crossentropy",
+        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate, clipnorm=1.0),
+        loss=loss_obj,
         metrics=["accuracy"],
     )
     return model
@@ -542,12 +576,18 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=default_output_dir)
     parser.add_argument("--epochs", type=int, default=25)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--learning-rate", type=float, default=1e-3,
+                        help="Adam learning rate")
+    parser.add_argument("--label-smoothing", type=float, default=0.0,
+                        help="Sparse categorical label smoothing in [0, 1)")
     parser.add_argument("--val-fraction", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--min-per-class", type=int, default=100,
                         help="Minimum images required per class before training")
     parser.add_argument("--min-total-images", type=int, default=360,
                         help="Minimum total dataset size required before training")
+    parser.add_argument("--min-sessions-per-class", type=int, default=2,
+                        help="Minimum distinct capture sessions required per class")
     parser.add_argument("--min-train-per-class", type=int, default=80,
                         help="Minimum train split images per class required after stratified split")
     parser.add_argument("--min-val-per-class", type=int, default=20,
@@ -572,6 +612,9 @@ def main() -> None:
                         help="Path to PlatformIO firmware src directory")
     args = parser.parse_args()
 
+    if not (0.0 <= args.label_smoothing < 1.0):
+        raise ValueError("--label-smoothing must be in [0, 1)")
+
     tf.random.set_seed(args.seed)
     np.random.seed(args.seed)
 
@@ -592,6 +635,20 @@ def main() -> None:
             "Insufficient images for classes: "
             f"{too_small}. Current counts={counts.tolist()}, required min={args.min_per_class}. "
             "Capture more images, especially for underrepresented classes."
+        )
+
+    session_counts = session_counts_per_class(y, sessions)
+    low_sessions = [
+        f"{name}={count}"
+        for name, count in session_counts.items()
+        if count < args.min_sessions_per_class
+    ]
+    if low_sessions:
+        raise ValueError(
+            "Insufficient capture-session diversity: "
+            f"{', '.join(low_sessions)}. Required min sessions per class={args.min_sessions_per_class}. "
+            "Capture at least 2+ separate sessions per class (different times/lighting/positioning), "
+            "or intentionally override with --min-sessions-per-class 1 for a baseline run."
         )
 
     if not args.disable_quality_gates:
@@ -638,7 +695,7 @@ def main() -> None:
     cw = class_weights(y_train) if use_class_weights else None
     print(f"Class weighting: {'enabled' if use_class_weights else 'disabled'} (imbalance ratio={imbalance_ratio:.2f})")
 
-    model = build_model()
+    model = build_model(args.learning_rate, args.label_smoothing)
     train_ds = make_train_ds(
         x_train,
         y_train,

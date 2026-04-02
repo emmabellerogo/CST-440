@@ -1,0 +1,136 @@
+{
+  "dataset_root": "/workspace/raw_dataset",
+  "counts": {
+    "like": 488,
+    "dislike": 499,
+    "peace": 493,
+    "background": 489
+  },
+  "class_stats": {
+    "like": {
+      "count": 488,
+      "mean_luma": 100.08636274494108,
+      "mean_luma_p10": 95.1427978515625,
+      "mean_luma_p90": 105.6693115234375,
+      "std_luma": 47.35497757645904,
+      "std_luma_p10": 44.59595642089844,
+      "std_luma_p90": 49.75171661376953,
+      "p01_luma": 33.23401639344262,
+      "p99_luma": 249.06014344262297,
+      "blur_laplacian_mean": 867.4026213473961,
+      "blur_laplacian_p10": 545.0665405273437,
+      "blur_laplacian_p90": 1153.8573974609376,
+      "entropy_mean": 6.85646416613313,
+      "entropy_p10": 6.683616018295288,
+      "entropy_p90": 6.958411598205567,
+      "clipped_dark_ratio_mean": 2.5014408299180326e-06,
+      "clipped_bright_ratio_mean": 0.006894471215420082,
+      "decode_fail": 0
+    },
+    "dislike": {
+      "count": 499,
+      "mean_luma": 113.04449572974073,
+      "mean_luma_p10": 108.869287109375,
+      "mean_luma_p90": 120.0146484375,
+      "std_luma": 56.431789038893214,
+      "std_luma_p10": 53.43095092773437,
+      "std_luma_p90": 59.61665496826172,
+      "p01_luma": 43.06603206412826,
+      "p99_luma": 244.83306613226455,
+      "blur_laplacian_mean": 790.4898938502004,
+      "blur_laplacian_p10": 663.398388671875,
+      "blur_laplacian_p90": 997.4310180664063,
+      "entropy_mean": 7.1689476469953455,
+      "entropy_p10": 6.969425010681152,
+      "entropy_p90": 7.341255569458008,
+      "clipped_dark_ratio_mean": 0.0,
+      "clipped_bright_ratio_mean": 8.023860220440882e-05,
+      "decode_fail": 0
+    },
+    "peace": {
+      "count": 493,
+      "mean_luma": 122.32435245784737,
+      "mean_luma_p10": 110.085205078125,
+      "mean_luma_p90": 132.39013671875,
+      "std_luma": 52.41220562453202,
+      "std_luma_p10": 46.37050857543945,
+      "std_luma_p90": 59.23600769042969,
+      "p01_luma": 46.16105476673428,
+      "p99_luma": 248.59188640973628,
+      "blur_laplacian_mean": 883.3594605482616,
+      "blur_laplacian_p10": 701.3118896484375,
+      "blur_laplacian_p90": 995.4956909179688,
+      "entropy_mean": 7.167669502281514,
+      "entropy_p10": 7.020013236999512,
+      "entropy_p90": 7.255711555480957,
+      "clipped_dark_ratio_mean": 0.0,
+      "clipped_bright_ratio_mean": 0.011624659292596349,
+      "decode_fail": 0
+    },
+    "background": {
+      "count": 489,
+      "mean_luma": 134.84468761982362,
+      "mean_luma_p10": 130.158251953125,
+      "mean_luma_p90": 142.84912109375,
+      "std_luma": 43.557118569902606,
+      "std_luma_p10": 41.84905471801758,
+      "std_luma_p90": 44.67497100830078,
+      "p01_luma": 72.27709611451942,
+      "p99_luma": 246.91881390593045,
+      "blur_laplacian_mean": 583.7563831040708,
+      "blur_laplacian_p10": 529.4013427734375,
+      "blur_laplacian_p90": 709.6746826171875,
+      "entropy_mean": 6.818705960529226,
+      "entropy_p10": 6.762724113464356,
+      "entropy_p90": 6.9041587829589846,
+      "clipped_dark_ratio_mean": 0.0,
+      "clipped_bright_ratio_mean": 0.00019720970731083845,
+      "decode_fail": 0
+    }
+  },
+  "duplicates": {
+    "exact_duplicate_groups": 0,
+    "exact_duplicate_images": 0,
+    "exact_cross_class_groups": 0,
+    "dhash_collision_groups": 277,
+    "dhash_collision_images": 1699,
+    "sample_exact_groups": []
+  },
+  "centroid_distances_l2": {
+    "like__dislike": 13.824179649353027,
+    "like__peace": 11.240047454833984,
+    "like__background": 14.607306480407715,
+    "dislike__peace": 9.53378677368164,
+    "dislike__background": 9.30451488494873,
+    "peace__background": 10.374112129211426
+  },
+  "nearest_centroid_confusion": {
+    "like": {
+      "like": 488,
+      "dislike": 0,
+      "peace": 0,
+      "background": 0
+    },
+    "dislike": {
+      "like": 0,
+      "dislike": 499,
+      "peace": 0,
+      "background": 0
+    },
+    "peace": {
+      "like": 0,
+      "dislike": 0,
+      "peace": 493,
+      "background": 0
+    },
+    "background": {
+      "like": 0,
+      "dislike": 0,
+      "peace": 0,
+      "background": 489
+    }
+  },
+  "recommendations": [
+    "Dataset quality looks reasonable. Proceed with training and validate with confusion matrix."
+  ]
+}

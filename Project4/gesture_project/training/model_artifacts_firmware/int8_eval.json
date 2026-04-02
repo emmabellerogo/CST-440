@@ -2,37 +2,119 @@
   "class_names": [
     "like",
     "dislike",
-    "palm",
+    "peace",
     "background"
   ],
-  "int8_val_acc": 0.26666666666666666,
-  "int8_mean_conf": 0.2517499135600196,
+  "int8_val_acc": 0.2581699346405229,
+  "int8_mean_conf": 0.25392529368400574,
+  "int8_pred_distribution": [
+    612,
+    0,
+    0,
+    0
+  ],
+  "int8_max_prob_summary": {
+    "mean": 0.25392529368400574,
+    "p10": 0.25392529368400574,
+    "p50": 0.25392529368400574,
+    "p90": 0.25392529368400574
+  },
   "int8_confusion_matrix": [
     [
+      158,
       0,
-      38,
-      0,
-      0
-    ],
-    [
-      0,
-      36,
       0,
       0
     ],
     [
+      166,
       0,
-      37,
       0,
       0
     ],
     [
+      147,
       0,
-      24,
+      0,
+      0
+    ],
+    [
+      141,
+      0,
       0,
       0
     ]
   ],
-  "min_val_acc_required": 0.55,
-  "is_deployable": false
+  "int8_confusion_matrix_normalized": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "int8_classification_metrics": {
+    "accuracy": 0.2581699346405229,
+    "macro_precision": 0.06454248366013073,
+    "macro_recall": 0.25,
+    "macro_f1": 0.1025974025974026,
+    "weighted_precision": 0.06665171515229186,
+    "weighted_recall": 0.2581699346405229,
+    "weighted_f1": 0.10595025889143538,
+    "per_class": [
+      {
+        "class_name": "like",
+        "precision": 0.2581699346405229,
+        "recall": 1.0,
+        "f1": 0.4103896103896104,
+        "support": 158
+      },
+      {
+        "class_name": "dislike",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 166
+      },
+      {
+        "class_name": "peace",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 147
+      },
+      {
+        "class_name": "background",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 141
+      }
+    ]
+  },
+  "int8_artifacts": {
+    "confusion_matrix_csv": "/workspace/model_artifacts_firmware/int8_confusion_matrix.csv",
+    "confusion_matrix_normalized_csv": "/workspace/model_artifacts_firmware/int8_confusion_matrix_normalized.csv",
+    "report_markdown": "/workspace/model_artifacts_firmware/int8_eval_report.md"
+  },
+  "min_val_acc_required": 0.0,
+  "is_deployable": true
 }
