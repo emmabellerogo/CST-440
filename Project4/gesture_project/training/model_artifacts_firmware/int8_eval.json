@@ -1,0 +1,38 @@
+{
+  "class_names": [
+    "like",
+    "dislike",
+    "palm",
+    "background"
+  ],
+  "int8_val_acc": 0.26666666666666666,
+  "int8_mean_conf": 0.2517499135600196,
+  "int8_confusion_matrix": [
+    [
+      0,
+      38,
+      0,
+      0
+    ],
+    [
+      0,
+      36,
+      0,
+      0
+    ],
+    [
+      0,
+      37,
+      0,
+      0
+    ],
+    [
+      0,
+      24,
+      0,
+      0
+    ]
+  ],
+  "min_val_acc_required": 0.55,
+  "is_deployable": false
+}

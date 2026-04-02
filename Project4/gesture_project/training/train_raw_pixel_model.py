@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 
-CLASS_NAMES = ["like", "dislike", "palm"]
+CLASS_NAMES = ["like", "dislike", "peace", "background"]
 CLASS_TO_INDEX = {name: i for i, name in enumerate(CLASS_NAMES)}
 
 CAM_WIDTH = 160
@@ -86,7 +86,7 @@ def stratified_split(x: np.ndarray, y: np.ndarray, val_fraction: float, seed: in
     val_idx: list[int] = []
 
     for c in range(len(CLASS_NAMES)):
-        idx = np.where(y == c)[0]
+        idx = np.nonzero(y == c)[0]
         rng.shuffle(idx)
         n_val = max(1, int(len(idx) * val_fraction)) if len(idx) > 1 else 0
         val_idx.extend(idx[:n_val].tolist())
@@ -282,13 +282,13 @@ def write_header_from_tflite(tflite_path: Path, header_path: Path) -> None:
 
 def main() -> None:
     script_dir = Path(__file__).resolve().parent
-    default_data_root = script_dir / "raw_dataset"
+    default_data_root = script_dir / "dataset"
     default_output_dir = script_dir / "model_artifacts_firmware"
     default_firmware_src = script_dir.parent / "src"
 
     parser = argparse.ArgumentParser(description="Train a raw-pixel gesture model aligned to firmware preprocessing")
     parser.add_argument("--data-root", type=Path, default=default_data_root,
-                        help="Folder containing like/, dislike/, palm/")
+                        help="Folder containing like/, dislike/, peace/, background/")
     parser.add_argument("--output-dir", type=Path, default=default_output_dir)
     parser.add_argument("--epochs", type=int, default=25)
     parser.add_argument("--batch-size", type=int, default=32)

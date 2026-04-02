@@ -1,0 +1,137 @@
+{
+  "dataset_root": "/workspace/raw_dataset",
+  "counts": {
+    "like": 386,
+    "dislike": 362,
+    "peace": 369,
+    "background": 248
+  },
+  "class_stats": {
+    "like": {
+      "count": 386,
+      "mean_luma": 121.71356359294042,
+      "mean_luma_p10": 113.1483154296875,
+      "mean_luma_p90": 134.178955078125,
+      "std_luma": 36.51806025925078,
+      "std_luma_p10": 30.53373622894287,
+      "std_luma_p90": 42.53299140930176,
+      "p01_luma": 54.30012953367875,
+      "p99_luma": 237.45660621761667,
+      "blur_laplacian_mean": 598.4699352046987,
+      "blur_laplacian_p10": 455.3820343017578,
+      "blur_laplacian_p90": 760.3088989257812,
+      "entropy_mean": 6.57761992691712,
+      "entropy_p10": 6.383274793624878,
+      "entropy_p90": 6.7812745571136475,
+      "clipped_dark_ratio_mean": 0.0,
+      "clipped_bright_ratio_mean": 0.015867243159002592,
+      "decode_fail": 0
+    },
+    "dislike": {
+      "count": 362,
+      "mean_luma": 116.43594006280215,
+      "mean_luma_p10": 110.2928955078125,
+      "mean_luma_p90": 122.48354492187501,
+      "std_luma": 41.26623268548955,
+      "std_luma_p10": 38.28482627868652,
+      "std_luma_p90": 44.10216026306152,
+      "p01_luma": 41.428591160220996,
+      "p99_luma": 248.87472375690615,
+      "blur_laplacian_mean": 695.5123433487191,
+      "blur_laplacian_p10": 590.9022094726563,
+      "blur_laplacian_p90": 792.5265930175783,
+      "entropy_mean": 6.89948802626594,
+      "entropy_p10": 6.841232109069824,
+      "entropy_p90": 6.9583676815032955,
+      "clipped_dark_ratio_mean": 0.0,
+      "clipped_bright_ratio_mean": 0.013849247885013813,
+      "decode_fail": 0
+    },
+    "peace": {
+      "count": 369,
+      "mean_luma": 111.46008466188178,
+      "mean_luma_p10": 108.599951171875,
+      "mean_luma_p90": 114.8240234375,
+      "std_luma": 41.997378264016255,
+      "std_luma_p10": 37.45816192626953,
+      "std_luma_p90": 45.160945129394534,
+      "p01_luma": 46.09579945799457,
+      "p99_luma": 250.81151761517617,
+      "blur_laplacian_mean": 160.78081591019463,
+      "blur_laplacian_p10": 131.04652099609376,
+      "blur_laplacian_p90": 193.76402587890624,
+      "entropy_mean": 6.87214175795475,
+      "entropy_p10": 6.756862449645996,
+      "entropy_p90": 6.96444730758667,
+      "clipped_dark_ratio_mean": 0.0,
+      "clipped_bright_ratio_mean": 0.02018626143292683,
+      "decode_fail": 0
+    },
+    "background": {
+      "count": 248,
+      "mean_luma": 122.40022622385332,
+      "mean_luma_p10": 74.130615234375,
+      "mean_luma_p90": 174.56501464843754,
+      "std_luma": 31.87904551336842,
+      "std_luma_p10": 6.777656507492068,
+      "std_luma_p90": 60.90368690490723,
+      "p01_luma": 68.33447580645162,
+      "p99_luma": 185.5195564516129,
+      "blur_laplacian_mean": 195.35083493109673,
+      "blur_laplacian_p10": 5.071641969680786,
+      "blur_laplacian_p90": 287.2012756347658,
+      "entropy_mean": 5.914910128039699,
+      "entropy_p10": 4.50375828742981,
+      "entropy_p90": 7.0086077690124515,
+      "clipped_dark_ratio_mean": 0.002086024130544355,
+      "clipped_bright_ratio_mean": 0.031653619581653226,
+      "decode_fail": 0
+    }
+  },
+  "duplicates": {
+    "exact_duplicate_groups": 0,
+    "exact_duplicate_images": 0,
+    "exact_cross_class_groups": 0,
+    "dhash_collision_groups": 98,
+    "dhash_collision_images": 259,
+    "sample_exact_groups": []
+  },
+  "centroid_distances_l2": {
+    "like__dislike": 9.898844718933105,
+    "like__peace": 11.643843650817871,
+    "like__background": 6.783481597900391,
+    "dislike__peace": 11.269132614135742,
+    "dislike__background": 7.615002155303955,
+    "peace__background": 10.86252212524414
+  },
+  "nearest_centroid_confusion": {
+    "like": {
+      "like": 373,
+      "dislike": 12,
+      "peace": 0,
+      "background": 1
+    },
+    "dislike": {
+      "like": 6,
+      "dislike": 355,
+      "peace": 0,
+      "background": 1
+    },
+    "peace": {
+      "like": 8,
+      "dislike": 0,
+      "peace": 361,
+      "background": 0
+    },
+    "background": {
+      "like": 23,
+      "dislike": 14,
+      "peace": 13,
+      "background": 198
+    }
+  },
+  "recommendations": [
+    "background: many low-detail frames (blur p10=5.07). Remove very blurry samples.",
+    "Background confusion is high (20.2% to gesture classes). Add harder negative/background samples."
+  ]
+}

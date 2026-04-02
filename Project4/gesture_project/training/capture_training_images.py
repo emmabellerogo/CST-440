@@ -10,8 +10,13 @@ import numpy as np
 CLASS_KEYS = {
     ord("1"): "like",
     ord("2"): "dislike",
-    ord("3"): "palm",
+    ord("3"): "peace",
+    ord("4"): "background",
+    ord("b"): "background",
+    ord("B"): "background",
 }
+
+CLASS_NAMES = ["like", "dislike", "peace", "background"]
 
 CAM_WIDTH = 160
 CAM_HEIGHT = 120
@@ -34,7 +39,7 @@ def firmware_preprocess(frame_bgr: np.ndarray) -> np.ndarray:
 
 def ensure_dirs(root: Path) -> dict[str, Path]:
     out = {}
-    for name in ["like", "dislike", "palm"]:
+    for name in CLASS_NAMES:
         p = root / name
         p.mkdir(parents=True, exist_ok=True)
         out[name] = p
@@ -51,11 +56,12 @@ def next_filename(folder: Path, prefix: str = "img") -> Path:
 
 
 def draw_hud(frame, active_label: str, counts: dict[str, int], mode_text: str):
+    counts_text = "Counts -> " + " ".join(f"{name}:{counts[name]}" for name in CLASS_NAMES)
     lines = [
         f"Active label: {active_label}",
-        f"Counts -> like:{counts['like']} dislike:{counts['dislike']} palm:{counts['palm']}",
+        counts_text,
         mode_text,
-        "Keys: [1]=like [2]=dislike [3]=palm [space]=capture [u]=undo [q]=quit",
+        "Keys: [1]=like [2]=dislike [3]=peace [4]/[b]=background [space]=capture [u]=undo [q]=quit",
     ]
     y = 28
     for line in lines:
@@ -65,7 +71,7 @@ def draw_hud(frame, active_label: str, counts: dict[str, int], mode_text: str):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capture webcam images into class folders for training")
-    parser.add_argument("--output-root", default="raw_dataset", help="Output dataset root (creates like/dislike/palm)")
+    parser.add_argument("--output-root", default="raw_dataset", help="Output dataset root (creates like/dislike/peace/background)")
     parser.add_argument("--camera", type=int, default=0, help="OpenCV camera index")
     parser.add_argument("--mirror", action="store_true", help="Mirror preview horizontally")
     parser.add_argument("--jpeg-quality", type=int, default=95, help="JPEG quality 0-100")
@@ -85,7 +91,7 @@ def main() -> None:
         raise SystemExit(f"Could not open camera index {args.camera}")
 
     print(f"Saving images under: {root}")
-    print("Press 1/2/3 to select label, space to capture, u to undo, q to quit")
+    print("Press 1/2/3/4 (or b) to select label, space to capture, u to undo, q to quit")
 
     last_flash_until = 0.0
     flash_label = ""
@@ -175,7 +181,7 @@ def main() -> None:
     cv2.destroyAllWindows()
 
     print("Done.")
-    for cls in ["like", "dislike", "palm"]:
+    for cls in CLASS_NAMES:
         print(f"{cls}: {counts[cls]}")
 
 
