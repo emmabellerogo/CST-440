@@ -75,6 +75,8 @@ def main() -> None:
     parser.add_argument("--camera", type=int, default=0, help="OpenCV camera index")
     parser.add_argument("--mirror", action="store_true", help="Mirror preview horizontally")
     parser.add_argument("--jpeg-quality", type=int, default=95, help="JPEG quality 0-100")
+    parser.add_argument("--session-tag", default=time.strftime("s%Y%m%d_%H%M%S"),
+                        help="Session id prefix used in filenames (default: current timestamp)")
     parser.add_argument("--save-mode", choices=["full", "crop", "both"], default="crop",
                         help="full=original frame, crop=firmware 64x64 crop, both=save both")
     args = parser.parse_args()
@@ -91,6 +93,7 @@ def main() -> None:
         raise SystemExit(f"Could not open camera index {args.camera}")
 
     print(f"Saving images under: {root}")
+    print(f"Session tag: {args.session_tag}")
     print("Press 1/2/3/4 (or b) to select label, space to capture, u to undo, q to quit")
 
     last_flash_until = 0.0
@@ -133,7 +136,7 @@ def main() -> None:
             continue
 
         if key == ord(" "):
-            out_path = next_filename(class_dirs[active_label])
+            out_path = next_filename(class_dirs[active_label], prefix=f"{args.session_tag}_{active_label}")
             ok_write = True
             qparams = [int(cv2.IMWRITE_JPEG_QUALITY), int(max(0, min(100, args.jpeg_quality)))]
 

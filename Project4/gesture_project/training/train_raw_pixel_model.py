@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import re
 import json
 from pathlib import Path
 
@@ -45,7 +46,22 @@ def preprocess_firmware_like(frame_bgr: np.ndarray) -> np.ndarray:
     return crop
 
 
-def load_dataset(data_root: Path, seed: int) -> tuple[np.ndarray, np.ndarray]:
+def infer_session_id(path: Path) -> str:
+    stem = path.stem
+    # Preferred capture format: sYYYYMMDD_HHMMSS_<label>_######
+    m = re.match(r"^(s\d{8}_\d{6})_.*_\d{6}(?:_crop)?$", stem)
+    if m:
+        return m.group(1)
+
+    # Fallback: strip trailing numeric frame suffix if present.
+    m = re.match(r"^(.+?)_\d{6}(?:_crop)?$", stem)
+    if m:
+        return m.group(1)
+
+    return f"{path.parent.name}_{stem}"
+
+
+def load_dataset(data_root: Path, seed: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     items: list[tuple[Path, int]] = []
 
     for name in CLASS_NAMES:
@@ -64,6 +80,7 @@ def load_dataset(data_root: Path, seed: int) -> tuple[np.ndarray, np.ndarray]:
 
     x_list: list[np.ndarray] = []
     y_list: list[int] = []
+    s_list: list[str] = []
 
     for p, y in items:
         img = cv2.imread(str(p), cv2.IMREAD_COLOR)
@@ -71,26 +88,59 @@ def load_dataset(data_root: Path, seed: int) -> tuple[np.ndarray, np.ndarray]:
             continue
         x_list.append(preprocess_firmware_like(img))
         y_list.append(y)
+        s_list.append(infer_session_id(p))
 
     if not x_list:
         raise ValueError("Could not decode any images from dataset")
 
     x = np.asarray(x_list, dtype=np.uint8)[..., None]
     y = np.asarray(y_list, dtype=np.int32)
-    return x, y
+    sessions = np.asarray(s_list, dtype=object)
+    return x, y, sessions
 
 
-def stratified_split(x: np.ndarray, y: np.ndarray, val_fraction: float, seed: int):
+def stratified_group_split(
+    x: np.ndarray,
+    y: np.ndarray,
+    sessions: np.ndarray,
+    val_fraction: float,
+    seed: int,
+):
     rng = np.random.default_rng(seed)
     train_idx: list[int] = []
     val_idx: list[int] = []
 
     for c in range(len(CLASS_NAMES)):
         idx = np.nonzero(y == c)[0]
-        rng.shuffle(idx)
-        n_val = max(1, int(len(idx) * val_fraction)) if len(idx) > 1 else 0
-        val_idx.extend(idx[:n_val].tolist())
-        train_idx.extend(idx[n_val:].tolist())
+        if len(idx) <= 1:
+            train_idx.extend(idx.tolist())
+            continue
+
+        sess_to_indices: dict[str, list[int]] = {}
+        for i in idx.tolist():
+            sess_to_indices.setdefault(str(sessions[i]), []).append(int(i))
+
+        sess_ids = list(sess_to_indices.keys())
+        rng.shuffle(sess_ids)
+
+        target_val = max(1, int(len(idx) * val_fraction))
+        class_val: list[int] = []
+        class_train: list[int] = []
+
+        # Keep sessions intact where possible to reduce burst leakage.
+        for sid in sess_ids:
+            sidx = sess_to_indices[sid]
+            if len(class_val) < target_val and len(sess_ids) > 1:
+                class_val.extend(sidx)
+            else:
+                class_train.extend(sidx)
+
+        # Safety: always keep at least one sample in train.
+        if not class_train and class_val:
+            class_train.append(class_val.pop())
+
+        train_idx.extend(class_train)
+        val_idx.extend(class_val)
 
     rng.shuffle(train_idx)
     rng.shuffle(val_idx)
@@ -101,8 +151,12 @@ def stratified_split(x: np.ndarray, y: np.ndarray, val_fraction: float, seed: in
     return x[train_idx], y[train_idx], x[val_idx], y[val_idx]
 
 
+def class_counts(y: np.ndarray) -> np.ndarray:
+    return np.bincount(y, minlength=len(CLASS_NAMES))
+
+
 def class_weights(y: np.ndarray) -> dict[int, float]:
-    counts = np.bincount(y, minlength=len(CLASS_NAMES))
+    counts = class_counts(y)
     total = float(np.sum(counts))
     n_classes = float(len(CLASS_NAMES))
     weights: dict[int, float] = {}
@@ -162,10 +216,12 @@ def make_train_ds(
         img = tf.cast(img, tf.float32)
         img = tf.image.random_brightness(img, max_delta=18.0)
         img = tf.image.random_contrast(img, lower=0.8, upper=1.2)
-        img = tf.image.random_saturation(tf.image.grayscale_to_rgb(img), lower=0.95, upper=1.05)
-        img = tf.image.rgb_to_grayscale(img)
         img = tf.pad(img, [[4, 4], [4, 4], [0, 0]], mode="REFLECT")
         img = tf.image.random_crop(img, size=[IMG_H, IMG_W, 1])
+        # Mild sensor-like noise and occasional blur improve robustness to live camera frames.
+        img = img + tf.random.normal(tf.shape(img), mean=0.0, stddev=4.0)
+        if tf.random.uniform(()) < 0.25:
+            img = tf.nn.avg_pool2d(tf.expand_dims(img, 0), ksize=3, strides=1, padding="SAME")[0]
         img = tf.clip_by_value(img, 0.0, 255.0)
         return tf.cast(img, tf.uint8), label
 
@@ -180,6 +236,34 @@ def make_eval_ds(x: np.ndarray, y: np.ndarray, batch_size: int) -> tf.data.Datas
     ds = tf.data.Dataset.from_tensor_slices((x, y))
     ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
     return ds
+
+
+def balanced_representative_subset(
+    x: np.ndarray,
+    y: np.ndarray,
+    seed: int,
+    max_samples: int = 400,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    n_classes = len(CLASS_NAMES)
+    per_class = max(1, max_samples // n_classes)
+
+    chosen: list[int] = []
+    for c in range(n_classes):
+        idx = np.nonzero(y == c)[0]
+        if len(idx) == 0:
+            continue
+        rng.shuffle(idx)
+        take = min(len(idx), per_class)
+        chosen.extend(idx[:take].tolist())
+
+    if len(chosen) < max_samples:
+        rest = np.setdiff1d(np.arange(len(y), dtype=np.int32), np.asarray(chosen, dtype=np.int32), assume_unique=False)
+        rng.shuffle(rest)
+        chosen.extend(rest[: max_samples - len(chosen)].tolist())
+
+    rng.shuffle(chosen)
+    return x[np.asarray(chosen, dtype=np.int32)]
 
 
 def convert_int8(model: tf.keras.Model, out_path: Path, rep_images: np.ndarray) -> None:
@@ -200,13 +284,56 @@ def convert_int8(model: tf.keras.Model, out_path: Path, rep_images: np.ndarray) 
     out_path.write_bytes(tflm)
 
 
+def run_quality_gates(
+    x: np.ndarray,
+    y: np.ndarray,
+    min_blur_p10: float,
+    min_like_peace_distance: float,
+) -> None:
+    blur_by_class: dict[int, list[float]] = {i: [] for i in range(len(CLASS_NAMES))}
+    vectors: dict[int, list[np.ndarray]] = {i: [] for i in range(len(CLASS_NAMES))}
+
+    for i in range(len(x)):
+        cls = int(y[i])
+        gray = x[i, :, :, 0]
+        blur_by_class[cls].append(float(cv2.Laplacian(gray, cv2.CV_32F).var()))
+        vectors[cls].append(gray.astype(np.float32).reshape(-1) / 255.0)
+
+    for i, name in enumerate(CLASS_NAMES):
+        vals = blur_by_class[i]
+        if not vals:
+            raise ValueError(f"No samples present for class {name}")
+        blur_p10 = float(np.percentile(vals, 10))
+        if blur_p10 < min_blur_p10:
+            raise ValueError(
+                f"Quality gate failed: {name} blur p10={blur_p10:.2f} < required {min_blur_p10:.2f}. "
+                "Remove blurry samples or recapture sharper data."
+            )
+
+    like_idx = CLASS_TO_INDEX.get("like")
+    peace_idx = CLASS_TO_INDEX.get("peace")
+    if like_idx is not None and peace_idx is not None:
+        like_cent = np.mean(np.stack(vectors[like_idx]), axis=0)
+        peace_cent = np.mean(np.stack(vectors[peace_idx]), axis=0)
+        dist = float(np.linalg.norm(like_cent - peace_cent))
+        if dist < min_like_peace_distance:
+            raise ValueError(
+                f"Quality gate failed: like__peace centroid distance={dist:.2f} < required {min_like_peace_distance:.2f}. "
+                "Collect more distinctive peace/like poses before training."
+            )
+
+
 def _softmax(logits: np.ndarray) -> np.ndarray:
     z = logits - np.max(logits)
     e = np.exp(z)
     return e / np.sum(e)
 
 
-def evaluate_tflite_int8(model_path: Path, x: np.ndarray, y: np.ndarray) -> tuple[float, float, np.ndarray]:
+def evaluate_tflite_int8(
+    model_path: Path,
+    x: np.ndarray,
+    y: np.ndarray,
+) -> tuple[float, float, np.ndarray, np.ndarray, np.ndarray]:
     interpreter = tf.lite.Interpreter(model_path=str(model_path))
     interpreter.allocate_tensors()
 
@@ -246,6 +373,7 @@ def evaluate_tflite_int8(model_path: Path, x: np.ndarray, y: np.ndarray) -> tupl
         max_probs.append(float(np.max(probs)))
 
     preds_arr = np.asarray(preds, dtype=np.int32)
+    max_probs_arr = np.asarray(max_probs, dtype=np.float32)
     acc = float(np.mean(preds_arr == y))
     mean_max_prob = float(np.mean(max_probs))
 
@@ -253,7 +381,129 @@ def evaluate_tflite_int8(model_path: Path, x: np.ndarray, y: np.ndarray) -> tupl
     for t, p in zip(y, preds_arr):
         cm[int(t), int(p)] += 1
 
-    return acc, mean_max_prob, cm
+    return acc, mean_max_prob, cm, preds_arr, max_probs_arr
+
+
+def classification_metrics_from_cm(cm: np.ndarray) -> dict[str, object]:
+    n = cm.shape[0]
+    per_class: list[dict[str, float | int | str]] = []
+
+    total = int(np.sum(cm))
+    correct = int(np.trace(cm))
+    accuracy = (correct / total) if total > 0 else 0.0
+
+    macro_p = 0.0
+    macro_r = 0.0
+    macro_f1 = 0.0
+    weighted_p = 0.0
+    weighted_r = 0.0
+    weighted_f1 = 0.0
+
+    for i in range(n):
+        tp = float(cm[i, i])
+        fp = float(np.sum(cm[:, i]) - tp)
+        fn = float(np.sum(cm[i, :]) - tp)
+        support = int(np.sum(cm[i, :]))
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = (2.0 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+        macro_p += precision
+        macro_r += recall
+        macro_f1 += f1
+
+        weighted_p += precision * support
+        weighted_r += recall * support
+        weighted_f1 += f1 * support
+
+        per_class.append(
+            {
+                "class_name": CLASS_NAMES[i],
+                "precision": float(precision),
+                "recall": float(recall),
+                "f1": float(f1),
+                "support": support,
+            }
+        )
+
+    n_float = float(n) if n > 0 else 1.0
+    total_float = float(total) if total > 0 else 1.0
+
+    return {
+        "accuracy": float(accuracy),
+        "macro_precision": float(macro_p / n_float),
+        "macro_recall": float(macro_r / n_float),
+        "macro_f1": float(macro_f1 / n_float),
+        "weighted_precision": float(weighted_p / total_float),
+        "weighted_recall": float(weighted_r / total_float),
+        "weighted_f1": float(weighted_f1 / total_float),
+        "per_class": per_class,
+    }
+
+
+def normalize_confusion_matrix(cm: np.ndarray) -> np.ndarray:
+    row_sums = np.sum(cm, axis=1, keepdims=True).astype(np.float32)
+    row_sums[row_sums == 0] = 1.0
+    return cm.astype(np.float32) / row_sums
+
+
+def write_matrix_csv(path: Path, matrix: np.ndarray, labels: list[str], fmt: str) -> None:
+    header = ["true\\pred", *labels]
+    lines = [",".join(header)]
+    for i, label in enumerate(labels):
+        row_vals = [format(float(v), fmt) for v in matrix[i]]
+        lines.append(",".join([label, *row_vals]))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_int8_eval_markdown(
+    out_path: Path,
+    int8_val_acc: float,
+    int8_mean_conf: float,
+    metrics: dict[str, object],
+    cm: np.ndarray,
+    cm_norm: np.ndarray,
+    pred_distribution: list[int],
+) -> None:
+    lines: list[str] = []
+    lines.append("# Int8 Evaluation Report")
+    lines.append("")
+    lines.append(f"- int8_val_acc: {int8_val_acc:.5f}")
+    lines.append(f"- int8_mean_conf: {int8_mean_conf:.5f}")
+    lines.append(f"- macro_f1: {float(metrics['macro_f1']):.5f}")
+    lines.append(f"- weighted_f1: {float(metrics['weighted_f1']):.5f}")
+    lines.append("")
+    lines.append("## Per-Class Metrics")
+    lines.append("")
+    lines.append("| class | precision | recall | f1 | support |")
+    lines.append("|---|---:|---:|---:|---:|")
+    for row in metrics["per_class"]:
+        lines.append(
+            "| "
+            f"{row['class_name']} | {float(row['precision']):.4f} | {float(row['recall']):.4f} | "
+            f"{float(row['f1']):.4f} | {int(row['support'])} |"
+        )
+    lines.append("")
+    lines.append("## Prediction Distribution")
+    lines.append("")
+    for i, label in enumerate(CLASS_NAMES):
+        lines.append(f"- {label}: {pred_distribution[i]}")
+    lines.append("")
+    lines.append("## Confusion Matrix (Counts)")
+    lines.append("")
+    lines.append("Rows=true, cols=pred")
+    lines.append("```")
+    lines.append(np.array2string(cm))
+    lines.append("```")
+    lines.append("")
+    lines.append("## Confusion Matrix (Row-Normalized)")
+    lines.append("")
+    lines.append("Rows sum to 1.0")
+    lines.append("```")
+    lines.append(np.array2string(cm_norm, formatter={"float_kind": lambda x: f"{x:.3f}"}))
+    lines.append("```")
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def write_header_from_tflite(tflite_path: Path, header_path: Path) -> None:
@@ -282,7 +532,7 @@ def write_header_from_tflite(tflite_path: Path, header_path: Path) -> None:
 
 def main() -> None:
     script_dir = Path(__file__).resolve().parent
-    default_data_root = script_dir / "dataset"
+    default_data_root = script_dir / "raw_dataset"
     default_output_dir = script_dir / "model_artifacts_firmware"
     default_firmware_src = script_dir.parent / "src"
 
@@ -304,6 +554,16 @@ def main() -> None:
                         help="Minimum validation split images per class required after stratified split")
     parser.add_argument("--min-val-acc", type=float, default=0.55,
                         help="Minimum int8 validation accuracy required to consider export deployable")
+    parser.add_argument("--min-blur-p10", type=float, default=8.0,
+                        help="Minimum 10th-percentile Laplacian variance required per class")
+    parser.add_argument("--min-like-peace-distance", type=float, default=6.0,
+                        help="Minimum centroid L2 distance required between like and peace")
+    parser.add_argument("--disable-quality-gates", action="store_true",
+                        help="Skip dataset quality gates before training")
+    parser.add_argument("--weighting-mode", choices=["auto", "on", "off"], default="auto",
+                        help="Class-weight strategy: auto applies only when imbalance is high")
+    parser.add_argument("--weighting-auto-ratio", type=float, default=1.5,
+                        help="Apply class weights in auto mode when max/min class count exceeds this ratio")
     parser.add_argument("--no-augment", action="store_true",
                         help="Disable data augmentation for a deterministic baseline run")
     parser.add_argument("--export-firmware", action="store_true",
@@ -315,8 +575,8 @@ def main() -> None:
     tf.random.set_seed(args.seed)
     np.random.seed(args.seed)
 
-    x, y = load_dataset(args.data_root, args.seed)
-    counts = np.bincount(y, minlength=len(CLASS_NAMES))
+    x, y, sessions = load_dataset(args.data_root, args.seed)
+    counts = class_counts(y)
     print("Raw class counts:", counts.tolist())
 
     total_images = int(np.sum(counts))
@@ -334,10 +594,13 @@ def main() -> None:
             "Capture more images, especially for underrepresented classes."
         )
 
-    x_train, y_train, x_val, y_val = stratified_split(x, y, args.val_fraction, args.seed)
+    if not args.disable_quality_gates:
+        run_quality_gates(x, y, args.min_blur_p10, args.min_like_peace_distance)
 
-    train_counts = np.bincount(y_train, minlength=len(CLASS_NAMES))
-    val_counts = np.bincount(y_val, minlength=len(CLASS_NAMES))
+    x_train, y_train, x_val, y_val = stratified_group_split(x, y, sessions, args.val_fraction, args.seed)
+
+    train_counts = class_counts(y_train)
+    val_counts = class_counts(y_val)
 
     low_train = [
         f"{CLASS_NAMES[i]}={int(c)}"
@@ -367,6 +630,14 @@ def main() -> None:
     print("Train class counts:", train_counts.tolist())
     print("Val class counts:", val_counts.tolist())
 
+    nonzero_train = train_counts[train_counts > 0]
+    imbalance_ratio = float(np.max(nonzero_train) / np.min(nonzero_train)) if len(nonzero_train) else 1.0
+    use_class_weights = args.weighting_mode == "on" or (
+        args.weighting_mode == "auto" and imbalance_ratio >= args.weighting_auto_ratio
+    )
+    cw = class_weights(y_train) if use_class_weights else None
+    print(f"Class weighting: {'enabled' if use_class_weights else 'disabled'} (imbalance ratio={imbalance_ratio:.2f})")
+
     model = build_model()
     train_ds = make_train_ds(
         x_train,
@@ -386,7 +657,7 @@ def main() -> None:
         train_ds,
         validation_data=val_ds,
         epochs=args.epochs,
-        class_weight=class_weights(y_train),
+        class_weight=cw,
         callbacks=callbacks,
         verbose=2,
     )
@@ -401,23 +672,70 @@ def main() -> None:
     labels_path = args.output_dir / "labels.json"
 
     model.save(keras_path)
-    convert_int8(model, int8_path, x_train)
+    rep_images = balanced_representative_subset(x_train, y_train, seed=args.seed, max_samples=400)
+    convert_int8(model, int8_path, rep_images)
     labels_path.write_text(json.dumps(CLASS_NAMES), encoding="utf-8")
 
-    int8_val_acc, int8_mean_conf, int8_cm = evaluate_tflite_int8(int8_path, x_val, y_val)
+    int8_val_acc, int8_mean_conf, int8_cm, int8_preds, int8_max_probs = evaluate_tflite_int8(int8_path, x_val, y_val)
+    int8_metrics = classification_metrics_from_cm(int8_cm)
+    int8_cm_norm = normalize_confusion_matrix(int8_cm)
+    pred_distribution = class_counts(int8_preds).tolist()
     print(f"Int8 val acc  : {int8_val_acc:.5f}")
     print(f"Int8 mean conf: {int8_mean_conf:.5f}")
+    print(f"Int8 macro F1 : {float(int8_metrics['macro_f1']):.5f}")
+    print(f"Int8 wtd F1   : {float(int8_metrics['weighted_f1']):.5f}")
+    print("Int8 per-class metrics:")
+    for row in int8_metrics["per_class"]:
+        print(
+            f"  {row['class_name']:>10s} "
+            f"P={float(row['precision']):.3f} "
+            f"R={float(row['recall']):.3f} "
+            f"F1={float(row['f1']):.3f} "
+            f"N={int(row['support'])}"
+        )
     print("Int8 confusion matrix (rows=true, cols=pred):")
     print(int8_cm)
+    print("Int8 confusion matrix normalized (rows=true, cols=pred):")
+    print(np.array2string(int8_cm_norm, formatter={"float_kind": lambda x: f"{x:.3f}"}))
 
     metrics_path = args.output_dir / "int8_eval.json"
+    cm_csv_path = args.output_dir / "int8_confusion_matrix.csv"
+    cm_norm_csv_path = args.output_dir / "int8_confusion_matrix_normalized.csv"
+    report_md_path = args.output_dir / "int8_eval_report.md"
+
+    write_matrix_csv(cm_csv_path, int8_cm, CLASS_NAMES, ".0f")
+    write_matrix_csv(cm_norm_csv_path, int8_cm_norm, CLASS_NAMES, ".6f")
+    write_int8_eval_markdown(
+        report_md_path,
+        int8_val_acc,
+        int8_mean_conf,
+        int8_metrics,
+        int8_cm,
+        int8_cm_norm,
+        pred_distribution,
+    )
+
     metrics_path.write_text(
         json.dumps(
             {
                 "class_names": CLASS_NAMES,
                 "int8_val_acc": int8_val_acc,
                 "int8_mean_conf": int8_mean_conf,
+                "int8_pred_distribution": pred_distribution,
+                "int8_max_prob_summary": {
+                    "mean": float(np.mean(int8_max_probs)),
+                    "p10": float(np.percentile(int8_max_probs, 10)),
+                    "p50": float(np.percentile(int8_max_probs, 50)),
+                    "p90": float(np.percentile(int8_max_probs, 90)),
+                },
                 "int8_confusion_matrix": int8_cm.tolist(),
+                "int8_confusion_matrix_normalized": int8_cm_norm.tolist(),
+                "int8_classification_metrics": int8_metrics,
+                "int8_artifacts": {
+                    "confusion_matrix_csv": str(cm_csv_path),
+                    "confusion_matrix_normalized_csv": str(cm_norm_csv_path),
+                    "report_markdown": str(report_md_path),
+                },
                 "min_val_acc_required": args.min_val_acc,
                 "is_deployable": int8_val_acc >= args.min_val_acc,
             },
@@ -430,6 +748,9 @@ def main() -> None:
     print(f"Saved: {int8_path} ({int8_path.stat().st_size} bytes)")
     print(f"Saved: {labels_path}")
     print(f"Saved: {metrics_path}")
+    print(f"Saved: {cm_csv_path}")
+    print(f"Saved: {cm_norm_csv_path}")
+    print(f"Saved: {report_md_path}")
 
     if int8_val_acc < args.min_val_acc:
         raise RuntimeError(
